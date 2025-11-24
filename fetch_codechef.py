@@ -3,7 +3,7 @@ import os
 import json
 from datetime import datetime
 
-USERNAME = "<YOUR_CODECHEF_USERNAME>"
+USERNAME = "ayush_vaze"
 
 # Folder to save problems
 BASE_DIR = "CodeChef"
