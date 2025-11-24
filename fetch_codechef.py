@@ -1,68 +1,96 @@
 import requests
+from bs4 import BeautifulSoup
 import os
-import json
-from datetime import datetime
+import time
 
 USERNAME = "ayush_vaze"
-
-# Folder to save problems
 BASE_DIR = "CodeChef"
 
-def fetch_submissions():
-    url = f"https://www.codechef.com/api/list/user/{USERNAME}"
+# -------- Step 1: Fetch solved problem codes --------
+def get_solved_problems():
+    url = f"https://www.codechef.com/users/{USERNAME}"
     r = requests.get(url)
-    data = r.json()
+    if r.status_code != 200:
+        print("Error fetching profile page")
+        return []
 
-    # All solved problems
-    solved = data["solved"]
+    soup = BeautifulSoup(r.text, "html.parser")
+    solved_section = soup.find("section", {"class": "rating-data-section problems-solved"})
 
-    all_problems = []
+    if not solved_section:
+        print("Could not locate solved problems section")
+        return []
 
-    for diff in solved:
-        for prob in solved[diff]:
-            all_problems.append((prob["problem_code"], diff))
+    codes = set()
 
-    return all_problems
+    for tag in solved_section.find_all("a"):
+        href = tag.get("href", "")
+        if "/problems/" in href:
+            code = href.split("/")[-1]
+            codes.add(code)
+
+    return list(codes)
 
 
-def fetch_solution(problem_code):
-    url = f"https://www.codechef.com/api/submission/{USERNAME}/{problem_code}"
+# -------- Step 2: Fetch latest accepted submission using problem page --------
+def get_latest_accepted_code(problem):
+    url = f"https://www.codechef.com/status/{problem},{USERNAME}"
     r = requests.get(url)
-    data = r.json()
+    if r.status_code != 200:
+        return None, None
 
-    # Get the latest Accepted submission
-    for sub in data["content"]:
-        if sub["status"] == "accepted":
-            return sub["solution"], sub["language"]
+    soup = BeautifulSoup(r.text, "html.parser")
 
+    # Find solution links
+    rows = soup.find_all("tr")
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) >= 7 and "accepted" in cols[3].text.lower():
+            lang = cols[6].text.strip()
+            sol_link = cols[7].find("a")
+            if sol_link:
+                sol_url = "https://www.codechef.com" + sol_link["href"]
+                return fetch_code(sol_url), lang
     return None, None
 
 
-def sanitize_lang(lang):
+# -------- Step 3: Extract code from solution page --------
+def fetch_code(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, "html.parser")
+    code_area = soup.find("div", {"class": "program-source-code"})
+    if not code_area:
+        return None
+    return code_area.text
+
+
+def lang_ext(lang):
     if "C++" in lang:
         return ".cpp"
     if "Python" in lang:
         return ".py"
-    if "C" == lang:
+    if lang == "C":
         return ".c"
     return ".txt"
 
 
-def save_to_file(problem_code, diff, code, lang):
-    ext = sanitize_lang(lang)
-    folder = os.path.join(BASE_DIR, diff)
-    os.makedirs(folder, exist_ok=True)
-    filepath = os.path.join(folder, f"{problem_code}{ext}")
-
-    with open(filepath, "w", encoding="utf-8") as f:
+# -------- Step 4: Save file --------
+def save(problem, code, lang):
+    os.makedirs(BASE_DIR, exist_ok=True)
+    ext = lang_ext(lang)
+    path = os.path.join(BASE_DIR, f"{problem}{ext}")
+    with open(path, "w", encoding="utf8") as f:
         f.write(code)
+    print("Saved:", path)
 
-    print(f"Saved: {filepath}")
 
-
+# -------- Main --------
 if __name__ == "__main__":
-    problems = fetch_submissions()
-    for (problem_code, diff) in problems:
-        code, lang = fetch_solution(problem_code)
+    problems = get_solved_problems()
+    print("Solved problems:", problems)
+
+    for p in problems:
+        code, lang = get_latest_accepted_code(p)
         if code:
-            save_to_file(problem_code, diff, code, lang)
+            save(p, code, lang)
+        time.sleep(1)
