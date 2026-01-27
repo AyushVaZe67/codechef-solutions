@@ -7,4 +7,4 @@ for i in range(T):
     elif (y - x) <= 200:
         print('YES')
     else:
-        print('NO')
+        print('NO')   
